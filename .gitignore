@@ -1,0 +1,23 @@
+# 编译输出
+*.o
+*.obj
+*.lo
+*.la
+*.al
+*.libs
+*.a
+*.so
+*.so.*
+*.dll
+*.dylib
+*.exe
+*.out
+*.app
+*.i*
+*.pdb
+*.mod
+*.idb
+*.ilk
+*.manifest
+
+build/
