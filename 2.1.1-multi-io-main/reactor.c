@@ -26,15 +26,15 @@ int send_cb(int fd);
 
 // conn, fd, buffer, callback
 struct conn_item {
-	int fd;
+	int fd; //套接字描述符
 	
-	char rbuffer[BUFFER_LENGTH];
-	int rlen;
-	char wbuffer[BUFFER_LENGTH];
-	int wlen;
+	char rbuffer[BUFFER_LENGTH]; //接收缓冲区
+	int rlen; //已接收数据长度
+	char wbuffer[BUFFER_LENGTH]; //发送缓冲区
+	int wlen; //已发送数据长度
 
 	union {
-		RCALLBACK accept_callback;
+		RCALLBACK accept_callback; 
 		RCALLBACK recv_callback;
 	} recv_t;
 	RCALLBACK send_callback;
@@ -43,6 +43,8 @@ struct conn_item {
 
 
 int epfd = 0;
+
+// connlist是一个全局的上下文连接表
 struct conn_item connlist[1048576] = {0}; // 1024  2G     2 * 512 * 1024 * 1024 
 // list
 struct timeval zvoice_king;
@@ -71,6 +73,7 @@ int set_event(int fd, int event, int flag) {
 
 }
 
+// 有事件就创建一个连接，发给相应的回调函数处理
 int accept_cb(int fd) {
 
 	struct sockaddr_in clientaddr;
@@ -83,14 +86,18 @@ int accept_cb(int fd) {
 	set_event(clientfd, EPOLLIN, 1);
 
 	connlist[clientfd].fd = clientfd;
+
+	// 清空缓冲区和长度
 	memset(connlist[clientfd].rbuffer, 0, BUFFER_LENGTH);
 	connlist[clientfd].rlen = 0;
 	memset(connlist[clientfd].wbuffer, 0, BUFFER_LENGTH);
 	connlist[clientfd].wlen = 0;
 	
+	// 可读可写时的回调函数
 	connlist[clientfd].recv_t.recv_callback = recv_cb;
 	connlist[clientfd].send_callback = send_cb;
 
+	// 每接受1000个连接，计算时间消耗
 	if ((clientfd % 1000) == 999) {
 		struct timeval tv_cur;
 		gettimeofday(&tv_cur, NULL);
@@ -139,6 +146,7 @@ int recv_cb(int fd) { // fd --> EPOLLIN
 
 int send_cb(int fd) {
 
+	// 这里的buffer是指针引用，不增加内存开销
 	char *buffer = connlist[fd].wbuffer;
 	int idx = connlist[fd].wlen;
 
@@ -151,30 +159,32 @@ int send_cb(int fd) {
 
 
 int init_server(unsigned short port) {
+    int sockfd = socket(AF_INET, SOCK_STREAM, 0);
 
-	int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    int opt = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+    //setsockopt(sockfd, SOL_SOCKET, SO_REUSEPORT, &opt, sizeof(opt));
 
-	struct sockaddr_in serveraddr;
-	memset(&serveraddr, 0, sizeof(struct sockaddr_in));
+    struct sockaddr_in serveraddr;
+    memset(&serveraddr, 0, sizeof(serveraddr));
+    serveraddr.sin_family = AF_INET;
+    serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
+    serveraddr.sin_port = htons(port);
 
-	serveraddr.sin_family = AF_INET;
-	serveraddr.sin_addr.s_addr = htonl(INADDR_ANY);
-	serveraddr.sin_port = htons(port);
+    if (bind(sockfd, (struct sockaddr*)&serveraddr, sizeof(serveraddr)) == -1) {
+        perror("bind");
+        return -1;
+    }
 
-	if (-1 == bind(sockfd, (struct sockaddr*)&serveraddr, sizeof(struct sockaddr))) {
-		perror("bind");
-		return -1;
-	}
-
-	listen(sockfd, 10);
-
-	return sockfd;
+    listen(sockfd, 10);
+    return sockfd;
 }
+
 
 // tcp 
 int main() {
 
-	int port_count = 20;
+	int port_count = 1;
 	unsigned short port = 2048;
 	int i = 0;
 
